@@ -81,6 +81,31 @@ class CharacteristicsController: UIViewController {
                 self?.characteristicsTableView.reloadData()
             }).disposed(by: disposeBag)
     }
+
+    fileprivate func showSendFileFieldForCharacteristic(characteristic: Characteristic) {
+        let valueWriteController = UIAlertController(title: "Write value", message: "Specify value in HEX to write ",
+                                                     preferredStyle: .alert)
+        valueWriteController.addTextField { _ in
+        }
+        valueWriteController.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+        valueWriteController.addAction(UIAlertAction(title: "Write", style: .default) { _ in
+            
+            if let _text = valueWriteController.textFields?.first?.text {
+                self.sendFileForCharacteristic(hexadecimalString: _text, characteristic: characteristic)
+            }
+            
+        })
+        present(valueWriteController, animated: true, completion: nil)
+    }
+    
+    fileprivate func sendFileForCharacteristic(hexadecimalString: String, characteristic: Characteristic) {
+        let hexadecimalData: Data = Data.fromHexString(string: hexadecimalString)
+        let type: CBCharacteristicWriteType = characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
+        characteristic.writeValue(hexadecimalData as Data, type: type)
+            .subscribe(onNext: { [weak self] _ in
+                self?.characteristicsTableView.reloadData()
+            }).disposed(by: disposeBag)
+    }
 }
 
 extension CharacteristicsController: UITableViewDataSource, UITableViewDelegate {
@@ -124,6 +149,13 @@ extension CharacteristicsController: UITableViewDataSource, UITableViewDelegate 
                 self.showWriteFieldForCharacteristic(characteristic: characteristic)
             }
             actionSheet.addAction(writeValueNotificationAction)
+        }
+        
+        if (characteristic.uuid.uuidString == "00020002-2FF1-4355-AE68-BD2F575B2249") {
+            let sendFileNotificationAction = UIAlertAction(title: "Send file", style: .default) { _ in
+                self.showSendFileFieldForCharacteristic(characteristic: characteristic)
+            }
+            actionSheet.addAction(sendFileNotificationAction)
         }
 
         present(actionSheet, animated: true, completion: nil)
