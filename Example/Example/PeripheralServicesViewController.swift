@@ -108,7 +108,8 @@ class PeripheralServicesViewController: UIViewController {
     }
     
     fileprivate func triggerValueRead(for characteristic: Characteristic) {
-        log("Start read ...")
+        let uuids = characteristic.uuid.uuidString
+        log("Start read char uuid: \(uuids) ...")
         characteristic.readValue()
             .timeout(2.0, scheduler: scheduler)
             .subscribeOn(MainScheduler.instance)
@@ -120,8 +121,8 @@ class PeripheralServicesViewController: UIViewController {
                 },
                 onError: { error in
                     let uuid = characteristic.uuid.uuidString
-                    log("Timeout uuid: \(uuid)") }
-            ).addDisposableTo(disposeBag)
+                    log("Read timeout uuid: \(uuid)") }
+            ).disposed(by: disposeBag)
     }
 
     fileprivate func triggerValueWrite(for peripheral: Peripheral, data: Data, characteristic: Characteristic) {
@@ -138,7 +139,7 @@ class PeripheralServicesViewController: UIViewController {
                 onError: { error in
                     let uuid = characteristic.uuid.uuidString
                     log("Write timeout on uuid: \(uuid)") }
-            ).addDisposableTo(disposeBag)
+            ).disposed(by: disposeBag)
     }
     
     private func makeList(_ n:Int ) -> Data {
@@ -149,7 +150,7 @@ class PeripheralServicesViewController: UIViewController {
         return Data(bytes: result)
     }
     
-    private func sendFile(to peripheral: Peripheral) {
+    func sendFile(to peripheral: Peripheral) {
         guard let service = peripheral.services?.first(where: { $0.uuid == fileSvcId }) else {return}
         guard let cmdChar = service.characteristics?.first(where: {$0.uuid == cmdCharId }) else {return}
         guard let dataChar = service.characteristics?.first(where: {$0.uuid == dataCharId }) else {return}
@@ -182,6 +183,20 @@ extension PeripheralServicesViewController: UITableViewDataSource, UITableViewDe
         return cell
     }
 
+    func tableView(_: UITableView, didSelectRowAt indexPath: IndexPath) {
+        let service = servicesList[indexPath.row]
+        let actionSheet = UIAlertController(title: "Choose action", message: nil, preferredStyle: .actionSheet)
+        
+        if (service.uuid.uuidString == "00020000-2FF1-4355-AE68-BD2F575B2249") {
+            let sendFileNotificationAction = UIAlertAction(title: "Send file", style: .default) { _ in
+                self.sendFile(to: service.peripheral)
+            }
+            actionSheet.addAction(sendFileNotificationAction)
+        }
+        
+        present(actionSheet, animated: true, completion: nil)
+    }
+    
     func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
         return UIView(frame: .zero)
     }

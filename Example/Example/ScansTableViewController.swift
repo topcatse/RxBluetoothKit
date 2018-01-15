@@ -47,14 +47,14 @@ class ScansTableViewController: UIViewController {
             .take(1)
             .flatMap { _ in self.manager.scanForPeripherals(withServices: nil, options: nil) }
             .subscribeOn(MainScheduler.instance)
-            .filter({$0.advertisementData.localName?.contains("Infobric") ?? false}) //self.isAnMCR(peripheral: $0)
+            .filter({$0.advertisementData.localName?.contains("Infobric") ?? false}) //self.isAMCR(peripheral: $0)
             .subscribe(onNext: {
                 self.addNewScannedPeripheral($0)
             }, onError: { _ in
             })
     }
 
-    private func isAnMCR(peripheral: ScannedPeripheral) -> Bool {
+    private func isAMCR(peripheral: ScannedPeripheral) -> Bool {
         guard let name = peripheral.advertisementData.localName else {return false}
         print(name)
         return true
