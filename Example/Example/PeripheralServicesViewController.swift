@@ -72,7 +72,6 @@ class PeripheralServicesViewController: UIViewController {
                 self.connectedPeripheral = $0
                 self.monitorDisconnection(for: $0)
                 self.downloadServices(for: $0)
-                self.sendFile(to: $0)
                 }, onError: { [weak self] error in
                     self?.activityIndicatorView.stopAnimating()
             }).disposed(by: disposeBag)
@@ -125,10 +124,10 @@ class PeripheralServicesViewController: UIViewController {
             ).disposed(by: disposeBag)
     }
 
-    fileprivate func triggerValueWrite(for peripheral: Peripheral, data: Data, characteristic: Characteristic) {
+    fileprivate func triggerValueWrite(data: Data, characteristic: Characteristic) {
         let uuids = characteristic.uuid.uuidString
         log("Start write \(uuids) ...")
-        peripheral.writeValue(data, for: characteristic, type: CBCharacteristicWriteType.withResponse)
+        characteristic.writeValue(data, type: CBCharacteristicWriteType.withResponse)
             .timeout(60.0, scheduler: scheduler)
             .subscribeOn(MainScheduler.instance)
             .subscribe(
@@ -151,21 +150,78 @@ class PeripheralServicesViewController: UIViewController {
     }
     
     func sendFile(to peripheral: Peripheral) {
+        // Check that all characteristics are available
         guard let service = peripheral.services?.first(where: { $0.uuid == fileSvcId }) else {return}
         guard let cmdChar = service.characteristics?.first(where: {$0.uuid == cmdCharId }) else {return}
         guard let dataChar = service.characteristics?.first(where: {$0.uuid == dataCharId }) else {return}
         guard let sizeChar = service.characteristics?.first(where: {$0.uuid == sizeCharId }) else {return}
         guard let statusChar = service.characteristics?.first(where: {$0.uuid == statusCharId }) else {return}
         
-        triggerValueRead(for: statusChar)
+        let status = statusChar.setNotificationAndMonitorUpdates()
         
-        triggerValueWrite(for: peripheral, data: Data(bytes: [100, 200, 0, 0]), characteristic: sizeChar)
+        // Set IDLE state
         
-        triggerValueWrite(for: peripheral, data: Data(bytes: [1]), characteristic: cmdChar)
+// Below does not work
         
-        triggerValueRead(for: statusChar)
-
-        triggerValueWrite(for: peripheral, data: makeList(100+256*200), characteristic: dataChar)
+        triggerValueWrite(data: Data(bytes: [1]), characteristic: statusChar)
+        
+        statusChar.readValue()
+            .timeout(2.0, scheduler: scheduler)
+            .subscribeOn(MainScheduler.instance)
+            .find
+            .filter({
+                let data = $0.value
+                guard let value = data?[0] else {return false}
+                let state = FileTransferState(rawValue: value)!
+                switch state {
+                case .idle:
+                    log("Idle state")
+                    return true
+                default:
+                    log("Not idle state")
+                    return false
+                }
+            })
+            .subscribe(
+                onError: { error in
+                    log("Timeout idle state") }
+            ).disposed(by: disposeBag)
+        
+        // Set file size
+        
+        triggerValueWrite(data: Data(bytes: [100, 200, 0, 0]), characteristic: sizeChar)
+        
+        // Step to RECEIVE state by setting command start-transaction (0)
+        
+        triggerValueWrite(data: Data(bytes: [0]), characteristic: cmdChar)
+        
+        // Wait for RECEIVE state
+        
+        statusChar.readValue()
+            .timeout(2.0, scheduler: scheduler)
+            .subscribeOn(MainScheduler.instance)
+            .filter({
+                let data = $0.value
+                guard let value = data?[0] else {return false}
+                let state = FileTransferState(rawValue: value)!
+                switch state {
+                case .recv:
+                    log("Receive state")
+                    return true
+                default:
+                    log("Not receive state")
+                    return false
+                }
+            })
+            .subscribe(
+                onError: { error in
+                    log("Timeout receive state") }
+            ).disposed(by: disposeBag)
+        
+        // Send file
+        
+        triggerValueWrite(data: makeList(100+256*200), characteristic: dataChar)
+// Above does not work
     }
 }
 
@@ -194,6 +250,8 @@ extension PeripheralServicesViewController: UITableViewDataSource, UITableViewDe
             actionSheet.addAction(sendFileNotificationAction)
         }
         
+        actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
+
         present(actionSheet, animated: true, completion: nil)
     }
     
